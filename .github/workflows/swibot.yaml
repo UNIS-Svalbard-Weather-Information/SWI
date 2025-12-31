@@ -1,82 +1,59 @@
-name: Create Branch and PR
+name: Dispatch Issue to Repositories
 
 on:
   issue_comment:
     types: [created]
 
 jobs:
-  create-branch-and-pr:
+  dispatch:
+    if: contains(github.event.comment.body, '@swibot')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - name: Install GitHub CLI
+        run: sudo apt-get install -y gh
 
-      - name: Parse comment
-        id: parse_comment
+      - name: Parse comment and dispatch issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Extract repositories and assignees from the comment
+          # Extract the comment body
           COMMENT_BODY="${{ github.event.comment.body }}"
-          if [[ $COMMENT_BODY == *"@swibot"* ]]; then
-            # Extract repositories and assignees
-            # Assuming the comment format is: @swibot repo1 user1, repo2 user2, ...
-            REPOS=$(echo "$COMMENT_BODY" | grep -o '@swibot [^ ]*' | awk '{print $2}' | tr ',' '\n' | sed 's/^/UNIS-Svalbard-Weather-Information\//')
-            ASSIGNEES=$(echo "$COMMENT_BODY" | grep -o '@[^ ]*' | awk '{print $2}' | tr ',' '\n')
-            echo "REPOS=$REPOS" >> $GITHUB_ENV
-            echo "ASSIGNEES=$ASSIGNEES" >> $GITHUB_ENV
-          else
-            echo "This comment does not contain @swibot"
-            exit 0
-          fi
 
-      - name: Determine branch name
-        id: determine_branch
-        run: |
+          # Extract repositories and assignees
+          REPOS=$(echo "$COMMENT_BODY" | grep -v '@swibot' | grep -v '^$')
+          ISSUE_NUMBER=${{ github.event.issue.number }}
           ISSUE_TITLE="${{ github.event.issue.title }}"
-          ISSUE_NUMBER="${{ github.event.issue.number }}"
-          # Remove special characters and spaces from the issue title
-          ISSUE_TITLE_SANITIZED=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]' | tr -d '[:punct:]')
-          if [[ $ISSUE_TITLE == *"[FEATURE]"* ]]; then
-            BRANCH_NAME="feature/${ISSUE_NUMBER}-${ISSUE_TITLE_SANITIZED}"
-          elif [[ $ISSUE_TITLE == *"[BUG]"* ]]; then
-            BRANCH_NAME="bug/${ISSUE_NUMBER}-${ISSUE_TITLE_SANITIZED}"
-          else
-            BRANCH_NAME="other/${ISSUE_NUMBER}-${ISSUE_TITLE_SANITIZED}"
-          fi
-          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+          FORMATTED_BRANCH="feature/$ISSUE_NUMBER-$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-_' | tr ' ' '_')"
 
-      - name: Create branches and pull requests
-        run: |
-          # Use GitHub API to create branches and pull requests in the target repositories
-          GITHUB_TOKEN=${{ secrets.SWIBOT_SECRET_TOKEN }}
-          # Convert REPOS and ASSIGNEES to arrays
-          IFS=$'\n' read -rd '' -a REPOS_ARRAY <<< "${{ env.REPOS }}"
-          IFS=$'\n' read -rd '' -a ASSIGNEES_ARRAY <<< "${{ env.ASSIGNEES }}"
+          # Loop over each line (repository)
+          while IFS= read -r line; do
+            # Extract repository and assignee (if any)
+            REPO=$(echo "$line" | awk '{print $1}')
+            ASSIGNEE=$(echo "$line" | grep -oP '@\K[^\s]+')
 
-          # Loop through each repository and assignee pair
-          for i in "${!REPOS_ARRAY[@]}"; do
-            REPO="${REPOS_ARRAY[$i]}"
-            ASSIGNEE="${ASSIGNEES_ARRAY[$i]}"
-            BRANCH_NAME="${{ env.BRANCH_NAME }}"
+            # Create a branch in the target repository using gh
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /repos/UNIS-Svalbard-Weather-Information/$REPO/git/refs \
+              -f ref="refs/heads/$FORMATTED_BRANCH" \
+              -f sha=$(gh api /repos/UNIS-Svalbard-Weather-Information/$REPO/git/ref/heads/main --jq '.object.sha')
 
-            # Get the latest commit SHA from the default branch (e.g., main)
-            DEFAULT_BRANCH=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/$REPO/branches/main" | jq -r '.commit.sha')
-
-            # Create a new branch
-            curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/$REPO/gits/refs" \
-              -d "{\"ref\":\"refs/heads/$BRANCH_NAME\",\"sha\":\"$DEFAULT_BRANCH\"}"
-
-            # Get the latest commit SHA from the new branch
-            BRANCH_SHA=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/$REPO/branches/$BRANCH_NAME" | jq -r '.commit.sha')
-
-            # Open a pull request
-            curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/$REPO/pulls" \
-              -d "{\"title\":\"Pull request for issue #${{ github.event.issue.number }}\",\"head\":\"$BRANCH_NAME\",\"base\":\"main\",\"body\":\"This pull request was automatically created by swibot.\",\"assignees\":[\"$ASSIGNEE\"]}"
-          done
+            # Create a PR using gh
+            PR_BODY="Dispatched from issue #$ISSUE_NUMBER"
+            if [ -n "$ASSIGNEE" ]; then
+              gh pr create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
+                --title "$ISSUE_TITLE" \
+                --body "$PR_BODY" \
+                --base main \
+                --head "$FORMATTED_BRANCH" \
+                --assignee "$ASSIGNEE"
+            else
+              gh pr create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
+                --title "$ISSUE_TITLE" \
+                --body "$PR_BODY" \
+                --base main \
+                --head "$FORMATTED_BRANCH"
+            fi
+          done <<< "$REPOS"
