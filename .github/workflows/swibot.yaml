@@ -20,7 +20,7 @@ jobs:
           COMMENT_BODY="${{ github.event.comment.body }}"
 
           # Prepare the issue body with a reference to the parent issue
-          ISSUE_BODY="$This issue have been automatically created from a general issue.\n\n**Parent Issue:** https://github.com/${{ github.repository }}/issues/${{ github.event.issue.number }}"
+          ISSUE_BODY="This issue has been automatically created from a general issue.\n\n**Parent Issue:** https://github.com/${{ github.repository }}/issues/${{ github.event.issue.number }}"
           ISSUE_NUMBER=${{ github.event.issue.number }}
           ISSUE_TITLE="${{ github.event.issue.title }}"
 
@@ -34,19 +34,17 @@ jobs:
             REPO=$(echo "$line" | awk '{print $1}')
             ASSIGNEE=$(echo "$line" | grep -oP '@\K\w+')
 
-            # Create a branch in the target repository using gh
-            gh api \
-              --method POST \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              /repos/UNIS-Svalbard-Weather-Information/$REPO/git/refs \
-              -f ref="refs/heads/$FORMATTED_BRANCH" \
-              -f sha=$(gh api /repos/UNIS-Svalbard-Weather-Information/$REPO/git/ref/heads/main --jq '.object.sha')
-
             # Open an issue
             gh issue create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
               --title "$ISSUE_TITLE" \
               --body "$ISSUE_BODY" \
               ${ASSIGNEE:+--assignee "$ASSIGNEE"}
+
+            echo ${ASSIGNEE:+--assignee "$ASSIGNEE"}
+
+            # Create a branch for the issue
+            gh issue develop --repo "UNIS-Svalbard-Weather-Information/$REPO" \
+              --name "$FORMATTED_BRANCH" \
+              --checkout
 
           done <<< "$(echo "$COMMENT_BODY" | grep -v '@swibot' | grep -v '^$')"
