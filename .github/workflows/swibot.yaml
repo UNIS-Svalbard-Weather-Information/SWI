@@ -38,7 +38,8 @@ jobs:
             NEW_ISSUE_URL=$(gh issue create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
               --title "$ISSUE_TITLE" \
               --body "$ISSUE_BODY" \
-              ${ASSIGNEE:+--assignee "$ASSIGNEE"})
+              --assignee LouisPauchet
+              #"${ASSIGNEE:+--assignee "$ASSIGNEE"})
 
             echo ${ASSIGNEE:+--assignee "$ASSIGNEE"}
 
