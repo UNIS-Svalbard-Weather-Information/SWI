@@ -40,7 +40,7 @@ jobs:
               --body "$ISSUE_BODY" \
               ${ASSIGNEE:+--assignee "$ASSIGNEE"})
 
-            echo ${ASSIGNEE:+--assignee "$ASSIGNEE"})
+            echo ${ASSIGNEE:+--assignee "$ASSIGNEE"}
 
             # Create a branch for the issue using the new issue URL
             gh issue develop "$NEW_ISSUE_URL" \
