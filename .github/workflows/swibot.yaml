@@ -42,7 +42,6 @@ jobs:
 
             # Create a branch for the issue using the new issue URL
             gh issue develop "$NEW_ISSUE_URL" \
-              --name "$FORMATTED_BRANCH" \
-              --checkout
+              --name "$FORMATTED_BRANCH"
 
           done <<< "$(echo "$COMMENT_BODY" | grep -v '@swibot' | grep -v '^$')"
