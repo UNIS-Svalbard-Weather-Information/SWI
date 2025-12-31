@@ -20,7 +20,7 @@ jobs:
           COMMENT_BODY="${{ github.event.comment.body }}"
 
           # Prepare the issue body with a reference to the parent issue
-          ISSUE_BODY="This issue has been automatically created from a general issue.\n\n**Parent Issue:** https://github.com/${{ github.repository }}/issues/${{ github.event.issue.number }}"
+          ISSUE_BODY="This issue has been automatically created from the **Parent Issue:** https://github.com/${{ github.repository }}/issues/${{ github.event.issue.number }}"
           ISSUE_NUMBER=${{ github.event.issue.number }}
           ISSUE_TITLE="${{ github.event.issue.title }}"
 
@@ -39,6 +39,8 @@ jobs:
               --title "$ISSUE_TITLE" \
               --body "$ISSUE_BODY" \
               ${ASSIGNEE:+--assignee "$ASSIGNEE"})
+
+            echo ${ASSIGNEE:+--assignee "$ASSIGNEE"})
 
             # Create a branch for the issue using the new issue URL
             gh issue develop "$NEW_ISSUE_URL" \
