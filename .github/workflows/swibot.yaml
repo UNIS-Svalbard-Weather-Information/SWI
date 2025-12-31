@@ -14,16 +14,16 @@ jobs:
 
       - name: Parse comment and dispatch issue
         env:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}  # Use the PAT here
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
         run: |
           # Extract the comment body
           COMMENT_BODY="${{ github.event.comment.body }}"
 
-          # Extract repositories and assignees
-          REPOS=$(echo "$COMMENT_BODY" | grep -v '@swibot' | grep -v '^$')
+          # Prepare the issue body with a reference to the parent issue
+          ISSUE_BODY="$This issue have been automatically created from a general issue.\n\n**Parent Issue:** https://github.com/${{ github.repository }}/issues/${{ github.event.issue.number }}"
           ISSUE_NUMBER=${{ github.event.issue.number }}
           ISSUE_TITLE="${{ github.event.issue.title }}"
-          
+
           # Remove [FEATURE] : or [BUG] : and replace spaces with underscores
           CLEAN_TITLE=$(echo "$ISSUE_TITLE" | sed 's/\[[A-Z]\+\] : //g' | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
           FORMATTED_BRANCH="feature/$ISSUE_NUMBER-$CLEAN_TITLE"
@@ -32,7 +32,7 @@ jobs:
           while IFS= read -r line; do
             # Extract repository and assignee (if any)
             REPO=$(echo "$line" | awk '{print $1}')
-            ASSIGNEE=$(echo "$line" | grep -oP '@\K[^\s]+')
+            ASSIGNEE=$(echo "$line" | grep -oP '@\K\w+')
 
             # Create a branch in the target repository using gh
             gh api \
@@ -43,16 +43,10 @@ jobs:
               -f ref="refs/heads/$FORMATTED_BRANCH" \
               -f sha=$(gh api /repos/UNIS-Svalbard-Weather-Information/$REPO/git/ref/heads/main --jq '.object.sha')
 
-            #Open an issue
-            if [ -n "$ASSIGNEE" ]; then
-              gh issue create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
-                --title "$ISSUE_TITLE" \
-                --body "$ISSUE_BODY" \
-                --assignee "$ASSIGNEE"
-            else
-              gh issue create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
-                --title "$ISSUE_TITLE" \
-                --body "$ISSUE_BODY"
-            fi
+            # Open an issue
+            gh issue create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
+              --title "$ISSUE_TITLE" \
+              --body "$ISSUE_BODY" \
+              ${ASSIGNEE:+--assignee "$ASSIGNEE"}
 
-          done <<< "$REPOS"
+          done <<< "$(echo "$COMMENT_BODY" | grep -v '@swibot' | grep -v '^$')"
