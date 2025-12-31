@@ -28,6 +28,11 @@ jobs:
           CLEAN_TITLE=$(echo "$ISSUE_TITLE" | sed 's/\[[A-Z]\+\] : //g' | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
           FORMATTED_BRANCH="feature/$ISSUE_NUMBER-$CLEAN_TITLE"
 
+          # Function to post a comment on the parent issue
+          post_comment() {
+            gh issue comment ${{ github.event.issue.number }} --body "$1"
+          }
+
           # Loop over each line (repository)
           while IFS= read -r line; do
             # Extract repository and assignee (if any)
@@ -35,15 +40,18 @@ jobs:
             ASSIGNEE=$(echo "$line" | grep -oP '@\K\w+')
 
             # Open an issue and capture the output
-            NEW_ISSUE_URL=$(gh issue create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
+            if ! NEW_ISSUE_URL=$(gh issue create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
               --title "$ISSUE_TITLE" \
               --body "$ISSUE_BODY" \
-              ${ASSIGNEE:+--assignee "$ASSIGNEE"})
-
-            echo ${ASSIGNEE:+--assignee "$ASSIGNEE"}
+              ${ASSIGNEE:+--assignee "$ASSIGNEE"} 2>&1); then
+              post_comment "❌ Failed to create issue in **$REPO**: $NEW_ISSUE_URL"
+              continue
+            fi
 
             # Create a branch for the issue using the new issue URL
-            gh issue develop "$NEW_ISSUE_URL" \
-              --name "$FORMATTED_BRANCH"
+            if ! gh issue develop "$NEW_ISSUE_URL" --name "$FORMATTED_BRANCH" 2>&1; then
+              post_comment "❌ Failed to create branch for issue in **$REPO**: $NEW_ISSUE_URL"
+              continue
+            fi
 
           done <<< "$(echo "$COMMENT_BODY" | grep -v '@swibot' | grep -v '^$')"
