@@ -16,7 +16,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
         run: |
-          set -x
           # Extract the comment body
           COMMENT_BODY="${{ github.event.comment.body }}"
 
@@ -29,37 +28,22 @@ jobs:
           CLEAN_TITLE=$(echo "$ISSUE_TITLE" | sed 's/\[[A-Z]\+\] : //g' | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
           FORMATTED_BRANCH="feature/$ISSUE_NUMBER-$CLEAN_TITLE"
 
-          # Function to post a comment on the parent issue
-          post_comment() {
-            gh issue comment ${{ github.event.issue.number }} --body "$1"
-          }
-
           # Loop over each line (repository)
           while IFS= read -r line; do
             # Extract repository and assignee (if any)
             REPO=$(echo "$line" | awk '{print $1}')
             ASSIGNEE=$(echo "$line" | grep -oP '@\K\w+' || echo "")
 
-            # Build the gh issue create command
-            CMD="gh issue create --repo \"UNIS-Svalbard-Weather-Information/$REPO\" --title \"$ISSUE_TITLE\" --body \"$ISSUE_BODY\""
-            echo $CMD
-        
-            # Only add --assignee if ASSIGNEE is not empty
-            if [ -n "$ASSIGNEE" ]; then
-                CMD="$CMD --assignee \"$ASSIGNEE\""
-            fi
-            echo $CMD
-        
             # Open an issue and capture the output
-            if ! NEW_ISSUE_URL=$($CMD 2>&1); then
-                post_comment "❌ Failed to create issue in **$REPO**: $NEW_ISSUE_URL"
-                continue
-            fi
+            NEW_ISSUE_URL=$(gh issue create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
+              --title "$ISSUE_TITLE" \
+              --body "$ISSUE_BODY" \
+              ${ASSIGNEE:+--assignee "$ASSIGNEE"})
+
+            echo ${ASSIGNEE:+--assignee "$ASSIGNEE"}
 
             # Create a branch for the issue using the new issue URL
-            if ! gh issue develop "$NEW_ISSUE_URL" --name "$FORMATTED_BRANCH" 2>&1; then
-              post_comment "❌ Failed to create branch for issue in **$REPO**: $NEW_ISSUE_URL"
-              continue
-            fi
+            gh issue develop "$NEW_ISSUE_URL" \
+              --name "$FORMATTED_BRANCH"
 
           done <<< "$(echo "$COMMENT_BODY" | grep -v '@swibot' | grep -v '^$')"
