@@ -47,7 +47,7 @@ jobs:
       - name: Create branches and pull requests
         run: |
           # Use GitHub API to create branches and pull requests in the target repositories
-          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN=${{ secrets.SWIBOT_SECRET_TOKEN }}
           # Convert REPOS and ASSIGNEES to arrays
           IFS=$'\n' read -rd '' -a REPOS_ARRAY <<< "${{ env.REPOS }}"
           IFS=$'\n' read -rd '' -a ASSIGNEES_ARRAY <<< "${{ env.ASSIGNEES }}"
