@@ -8,16 +8,13 @@ jobs:
   dispatch:
     if: contains(github.event.comment.body, '@swibot')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write   # Required to create branches
-      pull-requests: write  # Required to create PRs
     steps:
       - name: Install GitHub CLI
         run: sudo apt-get install -y gh
 
       - name: Parse comment and dispatch issue
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}  # Use the PAT here
         run: |
           # Extract the comment body
           COMMENT_BODY="${{ github.event.comment.body }}"
