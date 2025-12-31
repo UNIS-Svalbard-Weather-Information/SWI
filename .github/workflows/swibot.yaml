@@ -14,16 +14,17 @@ jobs:
 
       - name: Parse comment and dispatch issue
         env:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}  # Use the PAT here
+          GITHUB_TOKEN: ${{ secrets.FINE_GRAINED_PAT }}
         run: |
           # Extract the comment body
           COMMENT_BODY="${{ github.event.comment.body }}"
-
-          # Extract repositories and assignees
           REPOS=$(echo "$COMMENT_BODY" | grep -v '@swibot' | grep -v '^$')
           ISSUE_NUMBER=${{ github.event.issue.number }}
           ISSUE_TITLE="${{ github.event.issue.title }}"
-          FORMATTED_BRANCH="feature/$ISSUE_NUMBER-$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-_' | tr ' ' '_')"
+
+          # Remove [FEATURE] : or [BUG] : and replace spaces with underscores
+          CLEAN_TITLE=$(echo "$ISSUE_TITLE" | sed 's/\[[A-Z]\+\] : //g' | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
+          FORMATTED_BRANCH="feature/$ISSUE_NUMBER-$CLEAN_TITLE"
 
           # Loop over each line (repository)
           while IFS= read -r line; do
@@ -31,7 +32,7 @@ jobs:
             REPO=$(echo "$line" | awk '{print $1}')
             ASSIGNEE=$(echo "$line" | grep -oP '@\K[^\s]+')
 
-            # Create a branch in the target repository using gh
+            # Create the branch
             gh api \
               --method POST \
               -H "Accept: application/vnd.github+json" \
@@ -40,20 +41,12 @@ jobs:
               -f ref="refs/heads/$FORMATTED_BRANCH" \
               -f sha=$(gh api /repos/UNIS-Svalbard-Weather-Information/$REPO/git/ref/heads/main --jq '.object.sha')
 
-            # Create a PR using gh
-            PR_BODY="Dispatched from issue #$ISSUE_NUMBER"
+            # Add a comment to the original issue with a link to the new branch
+            BRANCH_URL="https://github.com/UNIS-Svalbard-Weather-Information/$REPO/tree/$FORMATTED_BRANCH"
+            COMMENT="A new branch for this issue has been created: [$FORMATTED_BRANCH]($BRANCH_URL)"
             if [ -n "$ASSIGNEE" ]; then
-              gh pr create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
-                --title "$ISSUE_TITLE" \
-                --body "$PR_BODY" \
-                --base main \
-                --head "$FORMATTED_BRANCH" \
-                --assignee "$ASSIGNEE"
-            else
-              gh pr create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
-                --title "$ISSUE_TITLE" \
-                --body "$PR_BODY" \
-                --base main \
-                --head "$FORMATTED_BRANCH"
+              COMMENT="$COMMENT\n\nAssigned to: @$ASSIGNEE"
             fi
+
+            gh issue comment ${{ github.event.issue.number }} --body "$COMMENT"
           done <<< "$REPOS"
