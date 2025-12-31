@@ -34,16 +34,15 @@ jobs:
             REPO=$(echo "$line" | awk '{print $1}')
             ASSIGNEE=$(echo "$line" | grep -oP '@\K\w+')
 
-            # Open an issue
-            gh issue create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
+            # Open an issue and capture the output
+            NEW_ISSUE_URL=$(gh issue create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
               --title "$ISSUE_TITLE" \
               --body "$ISSUE_BODY" \
-              ${ASSIGNEE:+--assignee "$ASSIGNEE"}
+              ${ASSIGNEE:+--assignee "$ASSIGNEE"} \
+              --json url --jq '.url')
 
-            echo ${ASSIGNEE:+--assignee "$ASSIGNEE"}
-
-            # Create a branch for the issue
-            gh issue develop --repo "UNIS-Svalbard-Weather-Information/$REPO" \
+            # Create a branch for the issue using the new issue URL
+            gh issue develop "$NEW_ISSUE_URL" \
               --name "$FORMATTED_BRANCH" \
               --checkout
 
