@@ -38,7 +38,7 @@ jobs:
           while IFS= read -r line; do
             # Extract repository and assignee (if any)
             REPO=$(echo "$line" | awk '{print $1}')
-            ASSIGNEE=$(echo "$line" | grep -oP '@\K\w+')
+            ASSIGNEE=$(echo "$line" | grep -oP '@\K\w+' || echo "")
 
             # Build the gh issue create command
             CMD="gh issue create --repo \"UNIS-Svalbard-Weather-Information/$REPO\" --title \"$ISSUE_TITLE\" --body \"$ISSUE_BODY\""
