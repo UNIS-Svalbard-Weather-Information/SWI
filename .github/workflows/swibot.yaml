@@ -4,35 +4,47 @@ on:
   issue_comment:
     types: [created]
 
+permissions: {}
+
 jobs:
   dispatch:
-    if: contains(github.event.comment.body, '@swibot')
+    # Only org members and collaborators can trigger the bot: it runs with a token
+    # that can create issues and branches in other repositories.
+    if: >-
+      contains(github.event.comment.body, '@swibot') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     steps:
-      - name: Install GitHub CLI
-        run: sudo apt-get install -y gh
-
       - name: Parse comment and dispatch issue
         env:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          # Untrusted text goes through env vars only, never into the script body.
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PARENT_REPO: ${{ github.repository }}
         run: |
-          # Extract the comment body
-          COMMENT_BODY="${{ github.event.comment.body }}"
+          set -euo pipefail
 
           # Prepare the issue body with a reference to the parent issue
-          ISSUE_BODY="This issue has been automatically created from the **Parent Issue:** https://github.com/${{ github.repository }}/issues/${{ github.event.issue.number }}"
-          ISSUE_NUMBER=${{ github.event.issue.number }}
-          ISSUE_TITLE="${{ github.event.issue.title }}"
+          ISSUE_BODY="This issue has been automatically created from the **Parent Issue:** https://github.com/${PARENT_REPO}/issues/${ISSUE_NUMBER}"
 
-          # Remove [FEATURE] : or [BUG] : and replace spaces with underscores
-          CLEAN_TITLE=$(echo "$ISSUE_TITLE" | sed 's/\[[A-Z]\+\] : //g' | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
-          FORMATTED_BRANCH="feature/$ISSUE_NUMBER-$CLEAN_TITLE"
+          # Remove [FEATURE] : or [BUG] : and replace spaces with underscores, then keep
+          # only characters that are valid in a branch name.
+          CLEAN_TITLE=$(printf '%s' "$ISSUE_TITLE" | sed 's/\[[A-Z]\+\] : //g' | tr ' ' '_' | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
+          FORMATTED_BRANCH="feature/${ISSUE_NUMBER}-${CLEAN_TITLE}"
 
           # Loop over each line (repository)
           while IFS= read -r line; do
             # Extract repository and assignee (if any)
-            REPO=$(echo "$line" | awk '{print $1}')
-            ASSIGNEE=$(echo "$line" | grep -oP '@\K\w+' || echo "")
+            REPO=$(printf '%s' "$line" | awk '{print $1}')
+            ASSIGNEE=$(printf '%s' "$line" | grep -oP '@\K[A-Za-z0-9-]+' || true)
+
+            # Only target this organisation's swi-* repositories
+            if ! [[ "$REPO" =~ ^swi-[A-Za-z0-9._-]+$ ]]; then
+              echo "Skipping unknown repository name"
+              continue
+            fi
 
             # Open an issue and capture the output
             NEW_ISSUE_URL=$(gh issue create --repo "UNIS-Svalbard-Weather-Information/$REPO" \
@@ -40,10 +52,8 @@ jobs:
               --body "$ISSUE_BODY" \
               ${ASSIGNEE:+--assignee "$ASSIGNEE"})
 
-            echo ${ASSIGNEE:+--assignee "$ASSIGNEE"}
-
             # Create a branch for the issue using the new issue URL
             gh issue develop "$NEW_ISSUE_URL" \
               --name "$FORMATTED_BRANCH"
 
-          done <<< "$(echo "$COMMENT_BODY" | grep -v '@swibot' | grep -v '^$')"
+          done <<< "$(printf '%s\n' "$COMMENT_BODY" | grep -v '@swibot' | grep -v '^$' || true)"
